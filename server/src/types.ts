@@ -217,7 +217,7 @@ export interface AnalysisReport {
     commitSha: string;
     analyzedAt: string;
     dataSource: 'orbit-live' | 'orbit-demo';
-    aiEngine: 'claude' | 'heuristic';
+    aiEngine: 'claude' | 'gemini' | 'heuristic';
     durationMs: number;
   };
   risk: RiskAssessment;

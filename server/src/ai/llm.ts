@@ -14,7 +14,7 @@ import { levelFor } from '../analysis/riskScore.js';
 
 const MODEL = 'claude-opus-4-8';
 
-const AiEnrichment = z.object({
+export const AiEnrichment = z.object({
   riskScore: z.number().describe('Final risk score 0-100, anchored on the baseline but adjusted by your reasoning'),
   riskReasoning: z
     .array(z.string())
@@ -48,13 +48,26 @@ const AiEnrichment = z.object({
     }),
   ),
 });
-type AiEnrichmentT = z.infer<typeof AiEnrichment>;
+export type AiEnrichmentT = z.infer<typeof AiEnrichment>;
 
 export function isAiEnabled(): boolean {
   return Boolean(process.env.ANTHROPIC_API_KEY);
 }
 
-const SYSTEM = `You are Orbit Change Guardian, an expert release engineer and SRE embedded in GitLab.
+export interface EnrichmentInput {
+  ctx: MrContext;
+  risk: RiskAssessment;
+  services: AffectedService[];
+  reviewers: ReviewerRecommendation[];
+  incidents: SimilarIncident[];
+  baselineTests: TestRecommendation[];
+}
+
+export type EnrichmentResult = Pick<AnalysisReport, 'risk' | 'executiveSummary' | 'testPlan' | 'deployment'> & {
+  reviewers: ReviewerRecommendation[];
+};
+
+export const SYSTEM = `You are Orbit Change Guardian, an expert release engineer and SRE embedded in GitLab.
 You receive (1) a merge request summary, (2) the blast radius extracted from GitLab Orbit's knowledge graph,
 (3) a deterministic baseline risk model, and (4) similar historical merge requests with outcomes.
 
@@ -65,19 +78,9 @@ Your job is to reason about deployment impact like a principal engineer who has 
 - The executive summary is for a non-technical engineering manager: no acronyms without expansion, no file paths.
 - Recommend 4-6 tests total across categories; only include categories that genuinely apply.`;
 
-export async function enrichWithClaude(input: {
-  ctx: MrContext;
-  risk: RiskAssessment;
-  services: AffectedService[];
-  reviewers: ReviewerRecommendation[];
-  incidents: SimilarIncident[];
-  baselineTests: TestRecommendation[];
-}): Promise<Pick<AnalysisReport, 'risk' | 'executiveSummary' | 'testPlan' | 'deployment'> & {
-  reviewers: ReviewerRecommendation[];
-}> {
-  const client = new Anthropic();
-
-  const context = {
+// Shared between every LLM provider: the exact context we hand the model.
+export function buildContext(input: EnrichmentInput) {
+  return {
     mergeRequest: {
       title: input.ctx.title,
       project: input.ctx.project,
@@ -91,24 +94,10 @@ export async function enrichWithClaude(input: {
     similarHistoricalMRs: input.incidents,
     baselineTestPlan: input.baselineTests,
   };
+}
 
-  const response = await client.messages.parse({
-    model: MODEL,
-    max_tokens: 16000,
-    thinking: { type: 'adaptive' },
-    system: SYSTEM,
-    messages: [
-      {
-        role: 'user',
-        content: `Analyze this merge request and produce the enriched assessment.\n\n${JSON.stringify(context, null, 2)}`,
-      },
-    ],
-    output_config: { format: zodOutputFormat(AiEnrichment) },
-  });
-
-  const ai = response.parsed_output as AiEnrichmentT | null;
-  if (!ai) throw new Error('Claude returned unparseable output');
-
+// Shared between every LLM provider: turn validated Ai output into a report slice.
+export function applyEnrichment(input: EnrichmentInput, ai: AiEnrichmentT): EnrichmentResult {
   const score = Math.round(Math.max(0, Math.min(100, ai.riskScore)));
   const reviewerNoteByUser = new Map(ai.reviewerNotes.map((n) => [n.username, n.explanation]));
 
@@ -127,4 +116,29 @@ export async function enrichWithClaude(input: {
       explanation: reviewerNoteByUser.get(r.username) ?? `${r.name}: ${r.signals.join('; ')}.`,
     })),
   };
+}
+
+export async function enrichWithClaude(input: EnrichmentInput): Promise<EnrichmentResult> {
+  const client = new Anthropic();
+
+  const context = buildContext(input);
+
+  const response = await client.messages.parse({
+    model: MODEL,
+    max_tokens: 16000,
+    thinking: { type: 'adaptive' },
+    system: SYSTEM,
+    messages: [
+      {
+        role: 'user',
+        content: `Analyze this merge request and produce the enriched assessment.\n\n${JSON.stringify(context, null, 2)}`,
+      },
+    ],
+    output_config: { format: zodOutputFormat(AiEnrichment) },
+  });
+
+  const ai = response.parsed_output as AiEnrichmentT | null;
+  if (!ai) throw new Error('Claude returned unparseable output');
+
+  return applyEnrichment(input, ai);
 }

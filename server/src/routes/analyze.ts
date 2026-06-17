@@ -16,6 +16,7 @@ import {
   heuristicTestPlan,
 } from '../analysis/heuristics.js';
 import { enrichWithClaude, isAiEnabled } from '../ai/llm.js';
+import { enrichWithGemini, isGeminiEnabled } from '../ai/gemini.js';
 
 const AnalyzeBody = z.object({
   mrUrl: z.string().min(1),
@@ -57,16 +58,26 @@ analyzeRouter.post('/analyze', async (req, res) => {
     let deployment = heuristicDeployment(baselineRisk, affectedServices, similarIncidents);
     let executiveSummary = heuristicSummary(ctx, baselineRisk, affectedServices, similarIncidents);
 
-    if (isAiEnabled()) {
+    // Provider preference: Gemini (free tier) → Claude → heuristic fallback.
+    const enrichInput = {
+      ctx,
+      risk: baselineRisk,
+      services: affectedServices,
+      reviewers: rankedReviewers,
+      incidents: similarIncidents,
+      baselineTests,
+    };
+    if (isGeminiEnabled()) {
       try {
-        const ai = await enrichWithClaude({
-          ctx,
-          risk: baselineRisk,
-          services: affectedServices,
-          reviewers: rankedReviewers,
-          incidents: similarIncidents,
-          baselineTests,
-        });
+        const ai = await enrichWithGemini(enrichInput);
+        ({ risk, reviewers, testPlan, deployment, executiveSummary } = ai);
+        aiEngine = 'gemini';
+      } catch (err) {
+        console.warn(`[ai] Gemini enrichment failed, serving heuristic report: ${(err as Error).message}`);
+      }
+    } else if (isAiEnabled()) {
+      try {
+        const ai = await enrichWithClaude(enrichInput);
         ({ risk, reviewers, testPlan, deployment, executiveSummary } = ai);
         aiEngine = 'claude';
       } catch (err) {

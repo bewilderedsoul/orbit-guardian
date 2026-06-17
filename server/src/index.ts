@@ -7,6 +7,13 @@ import { fileURLToPath } from 'node:url';
 import { analyzeRouter } from './routes/analyze.js';
 import { isLiveMode } from './orbit/client.js';
 import { isAiEnabled } from './ai/llm.js';
+import { isGeminiEnabled } from './ai/gemini.js';
+
+function aiEngineLabel(): string {
+  if (isGeminiEnabled()) return `Gemini (${process.env.GEMINI_MODEL ?? 'gemini-2.5-flash'})`;
+  if (isAiEnabled()) return 'Claude (claude-opus-4-8)';
+  return 'heuristic fallback (set GEMINI_API_KEY or ANTHROPIC_API_KEY to enable an LLM)';
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -19,7 +26,7 @@ app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
     orbit: isLiveMode() ? 'live' : 'demo',
-    ai: isAiEnabled() ? 'claude' : 'heuristic',
+    ai: isGeminiEnabled() ? 'gemini' : isAiEnabled() ? 'claude' : 'heuristic',
   });
 });
 
@@ -35,5 +42,5 @@ if (fs.existsSync(webDist)) {
 app.listen(PORT, () => {
   console.log(`⛨  Orbit Change Guardian API on http://localhost:${PORT}`);
   console.log(`   Orbit data source : ${isLiveMode() ? 'LIVE (GitLab Orbit GraphQL)' : 'DEMO knowledge graph'}`);
-  console.log(`   AI engine         : ${isAiEnabled() ? 'Claude (claude-opus-4-8)' : 'heuristic fallback (set ANTHROPIC_API_KEY to enable Claude)'}`);
+  console.log(`   AI engine         : ${aiEngineLabel()}`);
 });
