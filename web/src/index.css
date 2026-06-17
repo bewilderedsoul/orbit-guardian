@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-ink-950 text-ink-100 font-display antialiased;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(252, 109, 38, 0.08), transparent),
+    radial-gradient(ellipse 60% 40% at 90% 10%, rgba(169, 137, 245, 0.06), transparent);
+  background-attachment: fixed;
+}
+
+::selection {
+  background: rgba(252, 109, 38, 0.35);
+}
+
+.card {
+  @apply rounded-2xl border border-ink-700/60 bg-ink-900/80 shadow-card backdrop-blur-sm;
+}
+
+.section-title {
+  @apply flex items-center gap-2.5 text-sm font-semibold uppercase tracking-[0.14em] text-ink-300;
+}
+
+.chip {
+  @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium;
+}
+
+/* React Flow dark theme overrides */
+.react-flow__attribution {
+  display: none;
+}
+.react-flow__edge-path {
+  stroke-width: 1.5;
+}
+.react-flow__controls {
+  @apply !rounded-lg !border !border-ink-700 !bg-ink-850 !shadow-none;
+}
+.react-flow__controls-button {
+  @apply !border-ink-700 !bg-ink-850 !text-ink-200;
+}
+.react-flow__controls-button svg {
+  fill: currentColor;
+}
